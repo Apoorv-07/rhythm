@@ -13,7 +13,7 @@ pydub==0.25.1
 psycopg2-binary==2.9.7
 SQLAlchemy==2.0.23
 python-dateutil==2.8.2
-uuid==1.30
-flask
-flask-cors
-gunicorn
+
+# Build essentials so Render can compile anything if needed
+setuptools>=68.0
+wheel
