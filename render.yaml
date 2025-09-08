@@ -2,12 +2,13 @@ services:
   - type: web
     name: creative-studio-api
     env: python
+    plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn --bind 0.0.0.0:$PORT app:app"
-    autoDeploy: false # Set to true for automatic deploys on push
+    autoDeploy: false  # set to true if you want every push to redeploy
     envVars:
       - key: DATABASE_URL
-        value: "sqlite:////etc/data/creative_studio.db" # This is a placeholder, Render will handle persistence for databases
+        value: "sqlite:////opt/render/project/src/creative_studio.db" 
       - key: SECRET_KEY
         generateValue: true
       - key: FRONTEND_URL
