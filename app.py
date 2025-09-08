@@ -1,124 +1,61 @@
-
-
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 import os
 import uuid
-import json
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from generators.poem_generator import PoemGenerator
-from generators.music_generator import MusicGenerator
-from generators.animation_generator import AnimationGenerator
-from models.database import init_db, save_content
+from poem_generator import generate_poem
+from music_generator import generate_music
+from video_generator import generate_video
 
-
-# Config
-BASE_DIR = Path(__file__).parent
-OUT_DIR = BASE_DIR / "generated_files"
-OUT_DIR.mkdir(exist_ok=True)
-
-
+# Flask app setup
 app = Flask(__name__)
 CORS(app)
 
+# Storage paths
+OUTPUT_DIR = Path("outputs")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Initialize DB
-init_db()
+@app.route("/generate", methods=["POST"])
+def generate():
+    """Generate poem/song + music + video from a short prompt."""
+    data = request.get_json()
+    prompt = data.get("prompt")
+    if not prompt:
+        return jsonify({"error": "No prompt provided"}), 400
 
+    # Unique ID for this generation
+    gen_id = str(uuid.uuid4())
 
-# Instantiate generators (they are lightweight wrappers; replace internals with ML models later)
-poem_gen = PoemGenerator()
-music_gen = MusicGenerator(output_dir=OUT_DIR)
-anim_gen = AnimationGenerator(output_dir=OUT_DIR)
+    try:
+        # Generate poem
+        poem_text = generate_poem(prompt)
+        poem_file = OUTPUT_DIR / f"{gen_id}_poem.txt"
+        with open(poem_file, "w", encoding="utf-8") as f:
+            f.write(poem_text)
 
+        # Generate music
+        music_file = OUTPUT_DIR / f"{gen_id}_music.wav"
+        generate_music(prompt, str(music_file))
 
+        # Generate video
+        video_file = OUTPUT_DIR / f"{gen_id}_video.mp4"
+        generate_video(prompt, str(music_file), str(video_file))
 
+        return jsonify({
+            "poem": str(poem_file),
+            "music": str(music_file),
+            "video": str(video_file)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/generate', methods=['POST'])
-def generate_all():
-"""Generate poem/song + music + video from a short prompt.
-Input JSON: {"prompt": "a night of rhythmandcolors", "mode": "both"}
-Returns structured JSON:
-{
-"id": "...",
-"prompt": "...",
-"poem": {"text": "..."},
-"music": {"file": "/files/xxx.mp3", "bpm": 120, "duration": 3.0},
-"video": {"file": "/files/xxx.mp4", "duration": 3.0}
-}
-"""
-data = request.get_json() or {}
-prompt = (data.get('prompt') or '').strip()
-if not prompt:
-return jsonify({"error": "prompt is required"}), 400
+@app.route("/download/<file_id>", methods=["GET"])
+def download(file_id):
+    """Download generated files by ID."""
+    matching_files = list(OUTPUT_DIR.glob(f"{file_id}*"))
+    if not matching_files:
+        return jsonify({"error": "File not found"}), 404
+    return send_file(matching_files[0], as_attachment=True)
 
-
-mode = data.get('mode', 'both') # poem|song|both
-task_id = uuid.uuid4().hex
-
-
-# 1) Poem / Song lyrics (structured plain text)
-poem_text = poem_gen.generate(prompt, style='festive')
-
-
-# 2) Music (audio file) - returns metadata and filename
-music_meta = music_gen.generate(prompt, reference_text=poem_text, uid=task_id)
-
-
-# 3) Animation (video file) - uses generated music and poem to create a short clip
-video_meta = anim_gen.generate(prompt, poem_text=poem_text, music_path=music_meta['path'], uid=task_id)
-
-
-# Save structured result in DB
-save_content(task_id, prompt, poem_text, str(music_meta['path'].name), str(video_meta['path'].name))
-
-
-response = {
-'id': task_id,
-'prompt': prompt,
-'poem': {'text': poem_text},
-'music': {
-'file': f"/files/{music_meta['path'].name}",
-'duration': music_meta.get('duration'),
-'bpm': music_meta.get('bpm')
-},
-'video': {
-'file': f"/files/{video_meta['path'].name}",
-'duration': video_meta.get('duration')
-}
-}
-
-
-return jsonify(response)
-
-
-
-
-@app.route('/asr', methods=['POST'])
-def asr_endpoint():
-"""Accept an audio file and return transcript. This is a stub — integrate faster-whisper or another ASR here.
-Form: multipart/form-data with key 'audio'.
-"""
-if 'audio' not in request.files:
-return jsonify({'error': 'audio file required (key=audio)'}), 400
-f = request.files['audio']
-temp_path = OUT_DIR / f"asr_{uuid.uuid4().hex}.wav"
-f.save(temp_path)
-
-
-# Basic stub: echo filename as "transcript". Replace with ASR model call (faster-whisper, whisper, etc.)
-transcript = f"[ASR_STUB] saved to {temp_path.name} - implement ASR integration"
-return jsonify({'transcript': transcript})
-
-
-
-
-@app.route('/files/<path:filename>')
-def serve_file(filename):
-return send_from_directory(OUT_DIR, filename, as_attachment=False)
-
-
-
-
-if __name__ == '__main__':
-app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
