@@ -3,9 +3,9 @@ from flask_cors import CORS
 import os
 import uuid
 from pathlib import Path
-from poem_generator import generate_poem
-from music_generator import generate_music
-from video_generator import generate_video
+from generators.poem_generator import generate
+from generators.music_generator import generate
+from generators.animation_generator import generate
 
 # Flask app setup
 app = Flask(__name__)
